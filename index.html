@@ -113,6 +113,7 @@ let audioCtx = null;
 
 function ensureAudio() {
   if (!audioCtx) audioCtx = new AudioCtx();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
 }
 
 function playSound(type) {
@@ -221,7 +222,7 @@ function resetLevel() {
     { x: 9, y: 9, dx: -1, dy: 0, homeX: 9, homeY: 9, color: GHOST_COLORS[0], name: 'Blinky', frightened: false, eaten: false, respawnTimer: 0, mode: 'chase' },
     { x: 9, y: 9, dx: 1, dy: 0, homeX: 9, homeY: 9, color: GHOST_COLORS[1], name: 'Pinky', frightened: false, eaten: false, respawnTimer: 0, mode: 'chase' },
     { x: 9, y: 10, dx: 0, dy: -1, homeX: 9, homeY: 10, color: GHOST_COLORS[2], name: 'Inky', frightened: false, eaten: false, respawnTimer: 0, mode: 'chase' },
-    { x: 9, y: 11, dx: 0, dy: 1, homeX: 9, homeY: 11, color: GHOST_COLORS[3], name: 'Clyde', frightened: false, eaten: false, respawnTimer: 0, mode: 'chase' },
+    { x: 10, y: 10, dx: 0, dy: 1, homeX: 10, homeY: 10, color: GHOST_COLORS[3], name: 'Clyde', frightened: false, eaten: false, respawnTimer: 0, mode: 'chase' },
   ];
 }
 
@@ -435,12 +436,11 @@ function tick() {
     }
   }
 
-  movePac();
-
-  // Ghosts move slower, speed up with level
-  if (frame % Math.max(1, 3 - Math.floor(level / 3)) === 0) {
-    ghosts.forEach((g, i) => moveGhost(g, i));
-  }
+  // Pac moves slightly faster than ghosts; both speed up with level
+  const pacSkip = Math.max(2, 4 - Math.floor(level / 4));
+  const ghostSkip = Math.max(3, 5 - Math.floor(level / 3));
+  if (frame % pacSkip === 0) movePac();
+  if (frame % ghostSkip === 0) ghosts.forEach((g, i) => moveGhost(g, i));
 
   checkCollisions();
   if (checkWin()) {
@@ -621,13 +621,13 @@ document.addEventListener('keydown', e => {
     W: [0, -1], S: [0, 1], A: [-1, 0], D: [1, 0]
   };
   if (map[e.key]) {
-    [pac.nextDx, pac.nextDy] = map[e.key];
     if (state === 'start' || state === 'gameover') {
       initGame();
       state = 'playing';
       readyTimer = 30;
       playSound('start');
     }
+    [pac.nextDx, pac.nextDy] = map[e.key];
     e.preventDefault();
   }
 });
