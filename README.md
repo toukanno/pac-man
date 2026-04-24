@@ -2,8 +2,13 @@
 
 迷路の中でドットを食べながら幽霊から逃げる定番アーケードゲーム。
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/toukanno/pac-man)
+
 ## 遊び方
 - **↑↓←→ / WASD** — パックマンを移動
+- **P** — ポーズ / 再開
+- **M** — ミュート切替
+- **SPEED** HUDで速度切替(おそい / ふつう / はやい、`localStorage` に保存)
 - クリックまたはキー入力でゲームスタート
 - スマホはスワイプ操作に対応
 

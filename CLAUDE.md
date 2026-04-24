@@ -49,7 +49,7 @@ Spawns once at `(9, 13)` when `dotsEaten` hits 70 or 170; the fruit type/points 
 Persisted in `localStorage` under key `pacman-hiscore`. Written only on game-over when `score > hiScore`.
 
 ### Input
-`keydown` handler maps arrows and WASD (both cases) to `[pac.nextDx, pac.nextDy]` for input buffering; the same handler, plus click and touchend, starts or restarts the game from `start`/`gameover` states. Touch uses start/end coordinates to infer a swipe direction.
+`keydown` handler maps arrows and WASD (both cases) to `[pac.nextDx, pac.nextDy]` for input buffering; the same handler, plus click and touchend, starts or restarts the game from `start`/`gameover` states. `P` toggles `paused` (only while `state === 'playing'`; the tick early-returns so draw keeps rendering the pause overlay). `M` toggles `muted` (persisted under `pacman-muted`) — `playSound()` early-returns when muted. Key events are ignored when a form control is focused so the SPEED selector doesn't eat input. Touch uses start/end coordinates to infer a swipe direction.
 
 ## Conventions
 

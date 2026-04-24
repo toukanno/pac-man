@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pac-Man</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%23ffff00' d='M32 32L58 18a30 30 0 1 0 0 28z'/%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Press+Start+2P&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -59,7 +60,7 @@
   </select></div>
 </div>
 <canvas id="canvas"></canvas>
-<div id="controls">↑↓←→ / WASD で操作 · クリックまたはキーでスタート</div>
+<div id="controls">↑↓←→ / WASD で操作 · P でポーズ · M でミュート · クリックまたはキーでスタート</div>
 
 <script>
 const canvas = document.getElementById('canvas');
@@ -117,6 +118,8 @@ const SPEED_PRESETS = {
 };
 let speed = localStorage.getItem('pacman-speed') || 'slow';
 if (!SPEED_PRESETS[speed]) speed = 'slow';
+let paused = false;
+let muted = localStorage.getItem('pacman-muted') === '1';
 
 // Fruit types per level
 const FRUITS = [
@@ -138,6 +141,7 @@ function ensureAudio() {
 }
 
 function playSound(type) {
+  if (muted) return;
   ensureAudio();
   const now = audioCtx.currentTime;
   const osc = audioCtx.createOscillator();
@@ -431,7 +435,7 @@ function checkWin() {
 }
 
 function tick() {
-  if (state !== 'playing') return;
+  if (state !== 'playing' || paused) return;
   frame++;
 
   // Ready countdown
@@ -582,6 +586,20 @@ function draw() {
     ctx.fillText(String(f.points), f.x, f.y);
   }
 
+  // Pause overlay
+  if (paused && state === 'playing') {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ff0';
+    ctx.font = 'bold 24px "Press Start 2P", Courier New';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('PAUSED', canvas.width / 2, canvas.height / 2 - 10);
+    ctx.fillStyle = '#fff';
+    ctx.font = '12px Courier New';
+    ctx.fillText('P で再開', canvas.width / 2, canvas.height / 2 + 20);
+  }
+
   // Ready overlay
   if (readyTimer > 0 && state === 'playing') {
     ctx.fillStyle = '#ff0';
@@ -642,6 +660,19 @@ function gameLoop() {
 document.addEventListener('keydown', e => {
   // Ignore when typing in a form control (e.g. the speed selector)
   if (e.target && (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT')) return;
+  // Pause toggle
+  if ((e.key === 'p' || e.key === 'P') && state === 'playing') {
+    paused = !paused;
+    e.preventDefault();
+    return;
+  }
+  // Mute toggle
+  if (e.key === 'm' || e.key === 'M') {
+    muted = !muted;
+    localStorage.setItem('pacman-muted', muted ? '1' : '0');
+    e.preventDefault();
+    return;
+  }
   const map = {
     ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
     w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
