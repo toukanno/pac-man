@@ -34,6 +34,13 @@
   .hud-card .lbl { font-size: 0.55em; letter-spacing: 2px; color: rgba(255,255,0,0.45); margin-bottom: 3px; }
   .hud-card .val { font-size: 1.4em; font-weight: 700; color: #fff; }
   .hud-card.hi .val { color: #ff0; text-shadow: 0 0 10px #ff0; }
+  .hud-card select {
+    background: #000; color: #fff;
+    border: 1px solid rgba(255,255,0,0.3); border-radius: 4px;
+    font-family: inherit; font-size: 0.95em; font-weight: 700;
+    padding: 2px 6px; cursor: pointer; outline: none;
+  }
+  .hud-card select:focus { border-color: #ff0; }
   canvas { border: 1px solid rgba(0,0,220,0.6); box-shadow: 0 0 30px rgba(0,0,200,0.4), 0 0 60px rgba(0,0,100,0.2); border-radius: 4px; }
   #controls { margin-top: 10px; font-size: 0.6em; color: rgba(255,255,255,0.25); letter-spacing: 1px; }
 </style>
@@ -45,6 +52,11 @@
   <div class="hud-card"><div class="lbl">HI-SCORE</div><div class="val" id="hiscore">0</div></div>
   <div class="hud-card"><div class="lbl">LIVES</div><div class="val" id="lives">3</div></div>
   <div class="hud-card"><div class="lbl">LEVEL</div><div class="val" id="level">1</div></div>
+  <div class="hud-card"><div class="lbl">SPEED</div><select id="speed">
+    <option value="slow">おそい</option>
+    <option value="normal">ふつう</option>
+    <option value="fast">はやい</option>
+  </select></div>
 </div>
 <canvas id="canvas"></canvas>
 <div id="controls">↑↓←→ / WASD で操作 · クリックまたはキーでスタート</div>
@@ -95,6 +107,16 @@ let ghostEatCombo = 0;
 let floatingScores = [];
 
 const GHOST_COLORS = ['#ff0000','#ffb8ff','#00ffff','#ffb852'];
+
+// Movement speed presets: frames between steps (lower = faster).
+// Game loop runs at ~60fps via requestAnimationFrame.
+const SPEED_PRESETS = {
+  slow:   { pac: 10, ghost: 14 },
+  normal: { pac: 7,  ghost: 10 },
+  fast:   { pac: 4,  ghost: 6  },
+};
+let speed = localStorage.getItem('pacman-speed') || 'slow';
+if (!SPEED_PRESETS[speed]) speed = 'slow';
 
 // Fruit types per level
 const FRUITS = [
@@ -246,7 +268,7 @@ function wrapX(x) {
 }
 
 function addFloatingScore(x, y, points) {
-  floatingScores.push({ x: x * CELL + CELL / 2, y: y * CELL + CELL / 2, points, timer: 40 });
+  floatingScores.push({ x: x * CELL + CELL / 2, y: y * CELL + CELL / 2, points, timer: 90 });
 }
 
 function movePac() {
@@ -272,13 +294,13 @@ function movePac() {
     maze[pac.y][pac.x] = 3;
     score += 10;
     dotsEaten++;
-    if (frame % 2 === 0) playSound('chomp');
+    playSound('chomp');
     updateHUD();
   } else if (maze[pac.y][pac.x] === 2) {
     maze[pac.y][pac.x] = 3;
     score += 50;
     dotsEaten++;
-    powerTimer = 7 * 10;
+    powerTimer = 7 * 60; // 7 seconds @ 60fps
     ghostEatCombo = 0;
     ghosts.forEach(g => { if (!g.eaten) { g.frightened = true; } });
     playSound('power');
@@ -289,7 +311,7 @@ function movePac() {
   if (!fruit && (dotsEaten === 70 || dotsEaten === 170)) {
     const fruitIdx = Math.min(level - 1, FRUITS.length - 1);
     fruit = { x: 9, y: 13, ...FRUITS[fruitIdx] };
-    fruitTimer = 10 * 10; // 10 seconds
+    fruitTimer = 10 * 60; // 10 seconds @ 60fps
   }
 
   // Eat fruit
@@ -338,7 +360,7 @@ function getGhostTarget(g, idx) {
 }
 
 function moveGhost(g, idx) {
-  if (g.respawnTimer > 0) { g.respawnTimer--; return; }
+  if (g.respawnTimer > 0) return;
   if (readyTimer > 0) return;
 
   const dirs = [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }];
@@ -376,7 +398,7 @@ function checkCollisions() {
         const pts = 200 * Math.pow(2, ghostEatCombo - 1);
         score += pts;
         addFloatingScore(g.x, g.y, pts);
-        g.respawnTimer = 40;
+        g.respawnTimer = 120; // 2 seconds @ 60fps
         g.x = g.homeX;
         g.y = g.homeY;
         playSound('eatghost');
@@ -394,7 +416,7 @@ function checkCollisions() {
             updateHUD();
           }
         } else {
-          readyTimer = 20;
+          readyTimer = 60; // 1 second @ 60fps
         }
       }
     }
@@ -425,7 +447,10 @@ function tick() {
   }
 
   // Floating score timer
-  floatingScores = floatingScores.filter(f => { f.timer--; f.y -= 0.5; return f.timer > 0; });
+  floatingScores = floatingScores.filter(f => { f.timer--; f.y -= 0.2; return f.timer > 0; });
+
+  // Ghost respawn timer (ticks per frame so it's independent of movement speed)
+  ghosts.forEach(g => { if (g.respawnTimer > 0) g.respawnTimer--; });
 
   if (powerTimer > 0) {
     powerTimer--;
@@ -435,19 +460,19 @@ function tick() {
     }
   }
 
-  movePac();
+  const preset = SPEED_PRESETS[speed];
+  const pacSkip = Math.max(1, preset.pac - Math.floor(level / 4));
+  const ghostSkip = Math.max(1, preset.ghost - Math.floor(level / 3));
 
-  // Ghosts move slower, speed up with level
-  if (frame % Math.max(1, 3 - Math.floor(level / 3)) === 0) {
-    ghosts.forEach((g, i) => moveGhost(g, i));
-  }
+  if (frame % pacSkip === 0) movePac();
+  if (frame % ghostSkip === 0) ghosts.forEach((g, i) => moveGhost(g, i));
 
   checkCollisions();
   if (checkWin()) {
     playSound('levelup');
     level++;
     resetLevel();
-    readyTimer = 30;
+    readyTimer = 90;
     updateHUD();
   }
 }
@@ -512,7 +537,7 @@ function draw() {
     const r = CELL / 2 - 2;
 
     if (g.frightened) {
-      const flash = powerTimer < 30 && Math.floor(frame / 3) % 2;
+      const flash = powerTimer < 120 && Math.floor(frame / 6) % 2;
       ctx.fillStyle = flash ? '#ffffff' : '#0000ff';
     } else {
       ctx.fillStyle = g.color;
@@ -550,7 +575,7 @@ function draw() {
 
   // Floating scores
   for (const f of floatingScores) {
-    ctx.fillStyle = `rgba(255,255,255,${f.timer / 40})`;
+    ctx.fillStyle = `rgba(255,255,255,${Math.min(1, f.timer / 60)})`;
     ctx.font = 'bold 12px Orbitron';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -615,6 +640,8 @@ function gameLoop() {
 }
 
 document.addEventListener('keydown', e => {
+  // Ignore when typing in a form control (e.g. the speed selector)
+  if (e.target && (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT')) return;
   const map = {
     ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
     w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
@@ -625,7 +652,7 @@ document.addEventListener('keydown', e => {
     if (state === 'start' || state === 'gameover') {
       initGame();
       state = 'playing';
-      readyTimer = 30;
+      readyTimer = 90;
       playSound('start');
     }
     e.preventDefault();
@@ -636,9 +663,18 @@ canvas.addEventListener('click', () => {
   if (state === 'start' || state === 'gameover') {
     initGame();
     state = 'playing';
-    readyTimer = 30;
+    readyTimer = 90;
     playSound('start');
   }
+});
+
+// Speed selector
+const speedSel = document.getElementById('speed');
+speedSel.value = speed;
+speedSel.addEventListener('change', e => {
+  speed = e.target.value;
+  localStorage.setItem('pacman-speed', speed);
+  speedSel.blur(); // return focus so arrow keys control pac-man
 });
 
 // Touch
@@ -646,7 +682,7 @@ let tx = 0, ty = 0;
 canvas.addEventListener('touchstart', e => { tx = e.touches[0].clientX; ty = e.touches[0].clientY; e.preventDefault(); }, { passive: false });
 canvas.addEventListener('touchend', e => {
   const dx = e.changedTouches[0].clientX - tx, dy = e.changedTouches[0].clientY - ty;
-  if (state === 'start' || state === 'gameover') { initGame(); state = 'playing'; readyTimer = 30; playSound('start'); return; }
+  if (state === 'start' || state === 'gameover') { initGame(); state = 'playing'; readyTimer = 90; playSound('start'); return; }
   if (Math.abs(dx) > Math.abs(dy)) { pac.nextDx = dx > 0 ? 1 : -1; pac.nextDy = 0; }
   else { pac.nextDx = 0; pac.nextDy = dy > 0 ? 1 : -1; }
   e.preventDefault();
