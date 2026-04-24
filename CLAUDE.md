@@ -21,7 +21,7 @@ There is no build, no test suite, and no linter. Changes are verified by opening
 All code is in one `<script>` block in `index.html`. The runtime has three layers that cooperate via shared module-level `let`/`const` state — there are no classes.
 
 1. **State** (declared at `index.html:87-95`): `maze`, `pac`, `ghosts`, `score`, `lives`, `level`, `state`, `powerTimer`, `frame`, plus `hiScore`, `readyTimer`, `fruit`, `fruitTimer`, `dotsEaten`, `totalDots`, `ghostEatCombo`, `floatingScores`. `LAYOUT` (line 58) is the immutable source-of-truth maze; `maze` is a per-level mutable copy produced by `resetLevel()`.
-2. **Game loop** (`gameLoop` → `tick` → `draw`, driven by `requestAnimationFrame`): `tick()` only advances when `state === 'playing'`. Pac-Man moves every frame; ghosts move every `Math.max(1, 3 - Math.floor(level / 3))` frames so they speed up with level. Collisions run after each tick, then `checkWin()` triggers `resetLevel()` and increments `level`.
+2. **Game loop** (`gameLoop` → `tick` → `draw`, driven by `requestAnimationFrame` at ~60fps): `tick()` only advances when `state === 'playing'`. Movement cadence is frame-skip–based and driven by `SPEED_PRESETS[speed]`: Pac-Man moves every `preset.pac - floor(level/4)` frames and ghosts every `preset.ghost - floor(level/3)` frames (so both speed up with level). The selected preset (`slow` / `normal` / `fast`, default `slow`) is persisted in `localStorage` under `pacman-speed`. All real-time timers (`powerTimer`, `fruitTimer`, `readyTimer`, `respawnTimer`, floating-score lifetime) are measured in frames at 60fps and tick every frame independently of movement.
 3. **Rendering** (`draw()`): pure function of current state — maze cells, fruit, Pac-Man (arc with animated mouth), ghosts (body + eyes, or frightened blue/white flash), floating scores, and the appropriate overlay for `state` (`start` / `playing` + READY / `gameover`).
 
 ### Maze encoding
@@ -37,10 +37,10 @@ Each ghost has a distinct target, mimicking the arcade original. Ghosts pick the
 When `frightened`, ghosts pick a random valid direction. When eaten, they respawn at `homeX/homeY` after `respawnTimer = 40` ticks.
 
 ### Power-ups and scoring
-`powerTimer = 7 * 10` on power pellet pickup (70 ticks ≈ 7 seconds of frightened state). Ghost-eat score escalates via `ghostEatCombo`: `200 * 2^(combo-1)` → 200/400/800/1600. Frightened ghosts flash white when `powerTimer < 30`. `floatingScores` are rising ephemeral labels drawn for 40 ticks after eating a ghost or fruit.
+`powerTimer = 7 * 60` on power pellet pickup (7 seconds at 60fps of frightened state). Ghost-eat score escalates via `ghostEatCombo`: `200 * 2^(combo-1)` → 200/400/800/1600. Frightened ghosts flash white during the last 2 seconds (`powerTimer < 120`). `floatingScores` are rising ephemeral labels drawn for 90 frames after eating a ghost or fruit.
 
 ### Fruit
-Spawns once at `(9, 13)` when `dotsEaten` hits 70 or 170; the fruit type/points come from `FRUITS[min(level-1, 6)]` (🍒100 → 🔑3000). Fruit despawns after `fruitTimer = 100` ticks if not eaten.
+Spawns once at `(9, 13)` when `dotsEaten` hits 70 or 170; the fruit type/points come from `FRUITS[min(level-1, 6)]` (🍒100 → 🔑3000). Fruit despawns after `fruitTimer = 600` (10 seconds at 60fps) if not eaten.
 
 ### Audio
 `playSound(type)` lazily creates a single `AudioContext` on first use and synthesizes each effect (`chomp`, `power`, `eatghost`, `death`, `fruit`, `levelup`, `start`) from an `OscillatorNode` + `GainNode`. No audio files.
@@ -63,8 +63,8 @@ Persisted in `localStorage` under key `pacman-hiscore`. Written only on game-ove
 - **Maze layout** — `LAYOUT` at `index.html:58`
 - **Ghost AI targeting** — `getGhostTarget()` at `index.html:318`
 - **Ghost movement / frightened behavior** — `moveGhost()` at `index.html:340`
-- **Ghost speed curve** — frame-skip formula in `tick()` at `index.html:441`
-- **Power pellet duration** — `powerTimer = 7 * 10` in `movePac()` at `index.html:281`
+- **Speed presets (Pac-Man & ghost cadence)** — `SPEED_PRESETS` near `index.html:107`; applied in `tick()` (search for `pacSkip` / `ghostSkip`)
+- **Power pellet duration** — `powerTimer = 7 * 60` in `movePac()` (search for `powerTimer =`)
 - **Fruit spawn thresholds and points** — `FRUITS` table at `index.html:100` and spawn check at `index.html:289`
 - **Sound design** — `playSound()` switch at `index.html:118`
 - **Controls** — `keydown` map at `index.html:618`
