@@ -1,86 +1,70 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 ## Project Overview
 
-Classic Pac-Man arcade game implemented as a single-file HTML5 Canvas application with vanilla JavaScript. No build tools, no dependencies, no external assets — just open `index.html` in a browser.
+Classic Pac-Man arcade game implemented as a single-file HTML5 Canvas application with vanilla JavaScript. No build tools, no dependencies, no bundler — the entire game is `index.html` (~660 lines of HTML + CSS + JS). User-facing text is Japanese.
 
-## Repository Structure
+## Running the game
 
-```
-pac-man/
-├── CLAUDE.md      # This file — AI assistant guide
-├── README.md      # Game description and controls (Japanese)
-└── index.html     # Complete game (HTML + CSS + JS, ~400 lines)
-```
-
-## Tech Stack
-
-- **HTML5 Canvas** for rendering
-- **Vanilla JavaScript** (no frameworks, no bundler)
-- **Google Fonts** (Orbitron, Press Start 2P) loaded via CDN
-- No package.json, no npm, no build step
-
-## Architecture (index.html)
-
-All code lives in a single `<script>` tag. Key sections:
-
-| Section | Lines | Description |
-|---------|-------|-------------|
-| HTML/CSS | 1–49 | Layout, HUD, retro arcade styling |
-| Constants | 52–89 | `CELL`, `LAYOUT` (maze grid), ghost config |
-| Game state | 86 | `maze`, `pac`, `ghosts`, `score`, `lives`, `level`, `state`, `powerTimer`, `frame` |
-| `initGame()` | 91–105 | Reset all state, place entities |
-| Movement | 107–184 | `isWall()`, `wrapX()`, `movePac()`, `moveGhost()` |
-| Collisions | 186–210 | `checkCollisions()`, `checkWin()` |
-| Game loop | 212–235 | `tick()` — update logic at ~10 FPS effective for ghosts |
-| Rendering | 237–351 | `draw()` — canvas rendering (maze, pac, ghosts, overlays) |
-| HUD | 353–357 | `updateHUD()` — score/lives/level DOM updates |
-| Input | 365–397 | Keyboard (arrows + WASD), click, and touch/swipe |
-| Startup | 399–400 | `initGame()` + `gameLoop()` |
-
-## Game Mechanics
-
-- **Maze**: 22×19 grid. `1`=wall, `0`=dot (10 pts), `2`=power pellet (50 pts), `3`=empty
-- **Pac-Man**: Grid-based movement with input buffering (`nextDx`/`nextDy`)
-- **Ghosts**: 4 ghosts (Blinky/Pinky/Inky/Clyde) with Manhattan-distance chase AI; random movement when frightened
-- **Power-ups**: 7-second duration (70 frames), ghosts flash white before expiring
-- **Levels**: All dots eaten → next level; ghosts speed up with level progression
-- **Lives**: 3 lives; game over when all lost
-- **Tunnels**: Horizontal wrapping at maze edges
-
-## Game States
-
-- `start` — Title screen overlay; click or keypress to begin
-- `playing` — Active gameplay
-- `gameover` — Score display; click or keypress to restart
-
-## Development Workflow
-
-### Running the game
 ```bash
-# Just open index.html in any browser
 open index.html          # macOS
 xdg-open index.html      # Linux
 start index.html         # Windows
 ```
 
-### No build/test/lint commands
-This project has no build system, no test framework, and no linter configuration. Changes are tested manually by playing the game in a browser.
+There is no build, no test suite, and no linter. Changes are verified by opening the file in a browser and playing.
+
+## Architecture
+
+All code is in one `<script>` block in `index.html`. The runtime has three layers that cooperate via shared module-level `let`/`const` state — there are no classes.
+
+1. **State** (declared at `index.html:87-95`): `maze`, `pac`, `ghosts`, `score`, `lives`, `level`, `state`, `powerTimer`, `frame`, plus `hiScore`, `readyTimer`, `fruit`, `fruitTimer`, `dotsEaten`, `totalDots`, `ghostEatCombo`, `floatingScores`. `LAYOUT` (line 58) is the immutable source-of-truth maze; `maze` is a per-level mutable copy produced by `resetLevel()`.
+2. **Game loop** (`gameLoop` → `tick` → `draw`, driven by `requestAnimationFrame`): `tick()` only advances when `state === 'playing'`. Pac-Man moves every frame; ghosts move every `Math.max(1, 3 - Math.floor(level / 3))` frames so they speed up with level. Collisions run after each tick, then `checkWin()` triggers `resetLevel()` and increments `level`.
+3. **Rendering** (`draw()`): pure function of current state — maze cells, fruit, Pac-Man (arc with animated mouth), ghosts (body + eyes, or frightened blue/white flash), floating scores, and the appropriate overlay for `state` (`start` / `playing` + READY / `gameover`).
+
+### Maze encoding
+`LAYOUT` is a 22-row × 19-col grid where `1`=wall, `0`=dot (10 pts), `2`=power pellet (50 pts), `3`=empty. `isWall()` treats out-of-bounds as wall; `wrapX()` implements horizontal tunnel wrapping (cells marked `3` on the edges of rows 8, 10, 12).
+
+### Ghost AI (`getGhostTarget`, `index.html:318`)
+Each ghost has a distinct target, mimicking the arcade original. Ghosts pick the valid neighbor (no reversing) with the smallest Euclidean distance to the target:
+- **Blinky (red, idx 0)** — target is Pac-Man's current tile.
+- **Pinky (pink, idx 1)** — target is 4 tiles ahead of Pac-Man.
+- **Inky (cyan, idx 2)** — target is the reflection of Blinky's position through a point 2 tiles ahead of Pac-Man.
+- **Clyde (orange, idx 3)** — chases Pac-Man when distance > 8; otherwise scatters to bottom-left `(0, ROWS-1)`.
+
+When `frightened`, ghosts pick a random valid direction. When eaten, they respawn at `homeX/homeY` after `respawnTimer = 40` ticks.
+
+### Power-ups and scoring
+`powerTimer = 7 * 10` on power pellet pickup (70 ticks ≈ 7 seconds of frightened state). Ghost-eat score escalates via `ghostEatCombo`: `200 * 2^(combo-1)` → 200/400/800/1600. Frightened ghosts flash white when `powerTimer < 30`. `floatingScores` are rising ephemeral labels drawn for 40 ticks after eating a ghost or fruit.
+
+### Fruit
+Spawns once at `(9, 13)` when `dotsEaten` hits 70 or 170; the fruit type/points come from `FRUITS[min(level-1, 6)]` (🍒100 → 🔑3000). Fruit despawns after `fruitTimer = 100` ticks if not eaten.
+
+### Audio
+`playSound(type)` lazily creates a single `AudioContext` on first use and synthesizes each effect (`chomp`, `power`, `eatghost`, `death`, `fruit`, `levelup`, `start`) from an `OscillatorNode` + `GainNode`. No audio files.
+
+### High score
+Persisted in `localStorage` under key `pacman-hiscore`. Written only on game-over when `score > hiScore`.
+
+### Input
+`keydown` handler maps arrows and WASD (both cases) to `[pac.nextDx, pac.nextDy]` for input buffering; the same handler, plus click and touchend, starts or restarts the game from `start`/`gameover` states. Touch uses start/end coordinates to infer a swipe direction.
 
 ## Conventions
 
-- All game code is in a single file — keep it that way for simplicity
-- Japanese language for user-facing text (README, in-game messages)
-- Global scope with `let`/`const` for game state
-- Functions are standalone (no classes)
-- Canvas rendering in `draw()`, game logic in `tick()`, input handling via event listeners
-- `requestAnimationFrame` drives the game loop
+- Keep everything in `index.html`. Don't split into modules, add a bundler, or introduce a framework.
+- Japanese for user-facing strings (overlays, controls hint, README).
+- Module-level `let`/`const` state, standalone functions. No classes.
+- Changes to layout/AI/timing are made by editing the relevant constant or function in place — there is no config file.
 
-## Key Modification Points
+## Key modification points
 
-- **Maze layout**: Edit the `LAYOUT` 2D array (line 57–79)
-- **Game speed**: Adjust ghost frame-skip formula in `tick()` (line 225)
-- **Power-up duration**: Change `powerTimer = 7 * 10` in `movePac()` (line 142)
-- **Ghost AI**: Modify `moveGhost()` (line 159–184)
-- **Visual style**: CSS at top of file + canvas drawing in `draw()`
-- **Controls**: Key mappings in `keydown` handler (line 365–378)
+- **Maze layout** — `LAYOUT` at `index.html:58`
+- **Ghost AI targeting** — `getGhostTarget()` at `index.html:318`
+- **Ghost movement / frightened behavior** — `moveGhost()` at `index.html:340`
+- **Ghost speed curve** — frame-skip formula in `tick()` at `index.html:441`
+- **Power pellet duration** — `powerTimer = 7 * 10` in `movePac()` at `index.html:281`
+- **Fruit spawn thresholds and points** — `FRUITS` table at `index.html:100` and spawn check at `index.html:289`
+- **Sound design** — `playSound()` switch at `index.html:118`
+- **Controls** — `keydown` map at `index.html:618`
